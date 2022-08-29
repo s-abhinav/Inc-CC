@@ -14,17 +14,17 @@
             all-tests)))))
 
 (define (run-compile expr)
-  (let ((p (open-file "stst.s" "w")))
+  (let ((p (open-file "./bin/stst.s" "w")))
     (parameterize ((compile-port p))
       (compile-program expr))
     (close-output-port p)))
 
 (define (build)
-  (unless (zero? (system "gcc -o stst src/startup.c stst.s"))
+  (unless (zero? (system "gcc -o ./bin/stst src/startup.c ./bin/stst.s"))
     (error 'make "Could not build target.")))
 
 (define (execute)
-  (unless (zero? (system "./stst > stst.out"))
+  (unless (zero? (system "./bin/stst > ./bin/stst.out"))
     (error 'make "Produced program exited abnormally.")))
 
 (define (build-program expr)
@@ -34,7 +34,7 @@
 (define (get-string)
   (with-output-to-string
     (lambda ()
-      (with-input-from-file "stst.out"
+      (with-input-from-file "./bin/stst.out"
         (lambda ()
           (let f ()
             (let ((c (read-char)))
