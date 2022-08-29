@@ -10,7 +10,7 @@
     ((_ name (expr => output-string) ...)
      (set! all-tests
            (cons
-            '(name (expr output-string) ...)
+            '(name (expr string output-string) ...)
             all-tests)))))
 
 (define (run-compile expr)
@@ -20,7 +20,7 @@
     (close-output-port p)))
 
 (define (build)
-  (unless (zero? (system "gcc -o stst startup.c stst.s"))
+  (unless (zero? (system "gcc -o stst src/startup.c stst.s"))
     (error 'make "Could not build target.")))
 
 (define (execute)

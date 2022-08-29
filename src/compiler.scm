@@ -1,0 +1,12 @@
+(load "src/test-driver.scm")
+(load "src/test/tests-1.1-req.scm")
+
+(define (compile-program x)
+  (unless (integer? x) (error 'compile-program "Unsupported operation." x))
+  (emit "      .globl  _scheme_entry")
+  (emit "      .p2align    4, 0x90")
+  (emit "  _scheme_entry:")
+  (emit "       .cfi_startproc")
+  (emit "      movl    $~s, %eax" x)
+  (emit "      retq")
+  (emit "      .cfi_endproc"))
