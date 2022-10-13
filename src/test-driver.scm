@@ -13,6 +13,14 @@
             '(name (expr string output-string) ...)
             all-tests)))))
 
+(define-syntax add-tests-with-string-output-noboot
+  (syntax-rules (=>)
+    ((_ test-name (expr => output-string) ...)
+     (set! all-tests
+           (cons
+            '(test-name [expr string output-string noboot] ...)
+            all-tests)))))
+
 (define (run-compile expr)
   (let ((p (open-file "./bin/stst.s" "w")))
     (parameterize ((compile-port p))
@@ -48,8 +56,8 @@
   (build)
   (execute)
   (unless (string=? expected-output (get-string))
-    (error 'test "Output mismatch for test ~s, expected ~s, got ~s"
-           test-id expected-output (get-string))))
+    (error 'test (format "Output mismatch for test ~s, expected ~s, got ~s"
+                  test-id expected-output (get-string)))))
 
 (define (test-one test-id test)
   (let
