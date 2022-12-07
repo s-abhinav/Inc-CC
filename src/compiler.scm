@@ -4,6 +4,7 @@
 (load "src/test/tests-1.1-req.scm")
 (load "src/test/tests-1.2-req.scm")
 (load "src/test/tests-1.3-req.scm")
+(load "src/test/tests-1.4-req.scm")
 
 (define bool-t #x6F)
 (define bool-f #x2F)
@@ -160,6 +161,9 @@
 (define (primcall? expr)
   (and (pair? expr) (primitive? (car expr))))
 
+(define (if? expr)
+  (and (pair? expr) (eq? 'if (car expr))))
+
 (define (primitive-emitter x)
   (or (symbol-property x '*emitter*) (error 'primitive-emitter x)))
 
@@ -175,9 +179,31 @@
 (define (emit-immediate x)
   (emit "      movl    $~s, %eax" (immediate-rep x)))
 
+(define (if-test expr)
+  (cadr expr))
+
+(define (if-conseq expr)
+  (caddr expr))
+
+(define (if-altern expr)
+  (cadddr expr))
+
+(define (emit-if expr)
+  (let ((alt-label (unique-label))
+        (end-label (unique-label)))
+    (emit-expr (if-test expr))
+    (emit "      cmp $~s, %al" bool-f)
+    (emit "      je ~a" alt-label)
+    (emit-expr (if-conseq expr))
+    (emit "      jmp ~a" end-label)
+    (emit "~a:" alt-label)
+    (emit-expr (if-altern expr))
+    (emit "~a:" end-label)))
+
 (define (emit-expr expr)
   (cond
    ((immediate? expr) (emit-immediate expr))
+   ((if? expr) (emit-if expr))
    ((primcall? expr)  (emit-primcall expr))
    (else (error 'emit-expr 'unsupported expr))))
 
@@ -190,6 +216,18 @@
                              (length '(arg* ...)))
        (set-symbol-property! 'prim-name '*emitter*
                              (lambda (arg* ...) b b* ...))))))
+
+(define (get-predicate-result)
+  (emit "      movzbl %al, %eax")    ; sign extend lower half of register to upper half
+  (emit "      sal $~s, %al" bool-bit-shift) ; left shift
+  (emit "      or $~s, %al" bool-f)    ; ORs the result with bool-f to obtain our boolean equivalent of the result.
+  )
+
+;; Similar to get-predicate-result but return the not value.
+(define (get-predicate-result-not)
+  (emit "      movzbl %al, %eax")
+  (emit "      sal $~s, %al" bool-bit-shift)
+  (emit "      xor $~s, %al" bool-f))
 
 (define-primitive (fxadd1 arg)
   (emit-expr arg)
@@ -207,18 +245,6 @@
   (emit-expr arg)
   (emit "      shll $~s, %eax" (- charshift fxshift)) ; shift left
   (emit "      orl $~s, %eax" chartag))               ; bitwise or
-
-(define (get-predicate-result)
-  (emit "      movzbl %al, %eax")    ; sign extend lower half of register to upper half
-  (emit "      sal $~s, %al" bool-bit-shift) ; left shift
-  (emit "      or $~s, %al" bool-f)    ; ORs the result with bool-f to obtain our boolean equivalent of the result.
-  )
-
-;; Similar to get-predicate-result but return the not value.
-(define (get-predicate-result-not)
-  (emit "      movzbl %al, %eax")
-  (emit "      sal $~s, %al" bool-bit-shift)
-  (emit "      xor $~s, %al" bool-f))
 
 ;; x -> extended
 ;; e -> extra
@@ -276,6 +302,13 @@
   (emit-expr arg)
   (emit "      xorl $~s, %eax" #xFFFFFFFF) ; xor with all bits set to 1. This will flip all bits. 
   (emit "      andl $~s, %eax" #xFFFFFFFC)) ; set first 2 LSB to zero.
+
+(define unique-label
+  (let ((count 0))
+    (lambda ()
+      (let ((L (format #f "L_~s" count)))
+        (set! count (+ 1 count))
+        L))))
 
 ;; Referred to as emit-program in the tutorial.
 (define (compile-program expr)
