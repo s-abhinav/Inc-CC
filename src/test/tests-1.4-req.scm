@@ -14,4 +14,20 @@
   ((if (char? 12) 13 14) => "14\n")
   ((if (char? #\a) 13 14) => "13\n")
   ((fxadd1 (if (fxsub1 1) (fxsub1 13) 14)) => "13\n")
+  ((and) => "#t\n")
+  ((and #t) => "#t\n")
+  ((and #f) => "#f\n")
+  ((and (char? #\G)) => "#t\n")
+  ((and (fixnum? #\G)) => "#f\n")
+  ((and (char? #\G) (fixnum? #\G)) => "#f\n") ; and transformer
+  ((and (char? #\G) (fixnum? 1) (boolean? #t)) => "#t\n") ; and transformer
+  ((and (char? 1) (fixnum? 1) (boolean? #t)) => "#f\n") ; and transformer
+  ((and (char? 1) (and (fixnum? 1) (boolean? #t))) => "#f\n") ; nested and
+  ((or) => "#t\n")
+  ((or #t) => "#t\n")
+  ((or #f) => "#f\n")
+  ((or (char? #\G)) => "#t\n")
+  ((or (fixnum? #\G) (char? #\G)) => "#t\n")
+  ((or (fixnum? #\G) (boolean? #\G)) => "#f\n")
+  ((or (fixnum? #\G) (boolean? #\G) (or #f #t)) => "#t\n")
 )
