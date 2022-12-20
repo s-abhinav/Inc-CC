@@ -189,11 +189,21 @@
   (cadddr expr))
 
 (define (emit-if expr)
-  (let ((alt-label (unique-label))
-        (end-label (unique-label)))
-    (emit-expr (if-test expr))
-    (emit "      cmp $~s, %al" bool-f)
-    (emit "      je ~a" alt-label)
+  (let* ((alt-label (unique-label))
+         (end-label (unique-label))
+         (test-expr (if-test expr))
+         (optimize-cmp?
+          (and
+           (pair? test-expr)
+           (in? (car test-expr) predicateList))))
+    (if optimize-cmp?
+        (emit-expr test-expr `(optimize-cmp? . ,optimize-cmp?))
+        (emit-expr test-expr))
+    (cond (optimize-cmp?
+           (emit "      jne ~a" alt-label))
+          (else
+           (emit "      cmp $~s, %al" bool-f)
+           (emit "      je ~a" alt-label)))
     (emit-expr (if-conseq expr))
     (emit "      jmp ~a" end-label)
     (emit "~a:" alt-label)
@@ -236,8 +246,7 @@
          (list 'if (cadr expr) #t (or-transformer `(or ,@(cddr expr)))))
         (else (error or-transformer "Unexpected syntax" expr))))
 
-
-(define (emit-expr expr)
+(define (emit-expr expr . args)
   (cond
    ((immediate? expr) (emit-immediate expr))
    ((if? expr) (emit-if expr))
@@ -245,7 +254,13 @@
     (emit-expr (and-transformer expr)))
    ((or? expr)
     (emit-expr (or-transformer expr)))
-   ((primcall? expr)  (emit-primcall expr))
+   ((and (primcall? expr) (in? (car expr) predicateList))
+    (emit-primcall
+     (append expr
+             (if (null? args) `(())
+                 args))))
+   ((primcall? expr)
+    (emit-primcall expr))
    (else (error 'emit-expr 'unsupported expr))))
 
 (define-syntax define-primitive
@@ -258,17 +273,25 @@
        (set-symbol-property! 'prim-name '*emitter*
                              (lambda (arg* ...) b b* ...))))))
 
-(define (get-predicate-result)
-  (emit "      movzbl %al, %eax")    ; sign extend lower half of register to upper half
-  (emit "      sal $~s, %al" bool-bit-shift) ; left shift
-  (emit "      or $~s, %al" bool-f)    ; ORs the result with bool-f to obtain our boolean equivalent of the result.
-  )
-
-;; Similar to get-predicate-result but return the not value.
-(define (get-predicate-result-not)
-  (emit "      movzbl %al, %eax")
-  (emit "      sal $~s, %al" bool-bit-shift)
-  (emit "      xor $~s, %al" bool-f))
+(define (get-predicate-result . args)
+  (let* ((exists-assoc? (and
+                         (not (null? args))
+                         (not (null? (car args)))))
+         (negate-result?
+          (and exists-assoc?
+               (assoc 'negate-result? args)
+               (cdr (assoc 'negate-result? args)))))
+    (cond ((and exists-assoc?
+                (assoc 'optimize-cmp? args)
+                (cdr (assoc 'optimize-cmp? args))) '())
+          (else
+           (emit "      sete %al")        ; sets the result to 1 if the above is true
+           (emit "      movzbl %al, %eax") ; sign extend lower half of register to upper half
+           (emit "      sal $~s, %al" bool-bit-shift) ; left shift
+           (emit "      ~s $~s, %al"
+                 (if negate-result? "xor" "or")
+                 bool-f) ; ORs the result with bool-f to obtain our boolean equivalent of the result. xor in case of negation.
+           ))))
 
 (define-primitive (fxadd1 arg)
   (emit-expr arg)
@@ -296,48 +319,43 @@
 ;;                            -------- -> %al
 ;;                   --------          -> %ah
 ;; -----------------                   -> %ax
-(define-primitive (fixnum? arg)
+(define-primitive (fixnum? arg argList)
   (emit-expr arg)
   (emit "      and $~s, %al" fxmask) ; and arg with fixnum mask
   (emit "      cmp $~s, %al" fxtag)  ; compare the result of above with the fixnum tag
-  (emit "      sete %al")            ; sets the result to 1 if the above is true
-  (get-predicate-result))
+  (get-predicate-result argList))
 
 ;; same as fixnum? but
 ;; 1. without the "and" instruction
 ;; 2. and cmpl on %eax for 32 bit register since
 ;;    we want to compare the whole number instead
 ;;    of part of the register %al as done in fixnum?
-(define-primitive (fxzero? arg)
+(define-primitive (fxzero? arg argList)
   (emit-expr arg)
   (emit "      cmpl $~s, %eax" #x00)  ; compare full arg (cmpl, 32 bits) with 0 (#x00)
-  (emit "      sete %al")            ; sets the result to 1 if the above is true
-  (get-predicate-result))
+  (get-predicate-result argList))
 
-(define-primitive (null? arg)
+(define-primitive (null? arg argList)
   (emit-expr arg)
   (emit "      cmpl $~s, %eax" empty-list)
-  (emit "      sete %al")
-  (get-predicate-result))
+  (get-predicate-result argList))
 
-(define-primitive (boolean? arg)
+(define-primitive (boolean? arg argList)
   (emit-expr arg)
   (emit "      orl $~s, %eax" #x40) ; #x40, 7th bit set to 1, sets a false to true.
   (emit "      cmpl $~s, %eax" bool-t)
-  (emit "      sete %al")
-  (get-predicate-result))
+  (get-predicate-result argList))
 
-(define-primitive (char? arg)
+(define-primitive (char? arg argList)
   (emit-expr arg)
   (emit "      cmp $~s, %al" chartag)
-  (emit "      sete %al")
-  (get-predicate-result))
+  (get-predicate-result argList))
 
-(define-primitive (not arg)
+(define-primitive (not arg argList)
   (emit-expr arg)
   (emit "      cmp $~s, %al" bool-f)
-  (emit "      sete %al")
-  (get-predicate-result-not))
+  (get-predicate-result
+   (append (list argList) `((negate-result? . #t)))))
 
 (define-primitive (fxlognot arg)
   (emit-expr arg)
@@ -350,6 +368,15 @@
       (let ((L (format #f "L_~s" count)))
         (set! count (+ 1 count))
         L))))
+
+(define predicateList
+  '(fixnum?
+    fxzero?
+    null?
+    boolean?
+    char?
+    not
+    ))
 
 ;; Referred to as emit-program in the tutorial.
 (define (compile-program expr)

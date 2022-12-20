@@ -56,8 +56,8 @@
   (build)
   (execute)
   (unless (string=? expected-output (get-string))
-    (error 'test (format "Output mismatch for test ~s, expected ~s, got ~s"
-                  test-id expected-output (get-string)))))
+    (error 'test (format "Output mismatch for test ~s, expr ~s, expected ~s, got ~s"
+                  test-id expr expected-output (get-string)))))
 
 (define (test-one test-id test)
   (let
