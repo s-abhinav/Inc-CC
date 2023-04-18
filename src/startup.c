@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <unistd.h>
+#include <sys/mman.h>
 
 /* Define all Scheme constants */
 #define FX_MASK          0x03
@@ -219,7 +221,12 @@ struct dict
     {TILDE, "#\\~"}
 };
 
-int scheme_entry(); // fix implicit function declaration error
+int scheme_entry(char *stackoffset); // fix implicit function declaration error
+
+int add(int a, int b, int c, int d)
+{
+    return b;
+}
 
 // Looks up the key index from the dictionary dict.
 int lookup(struct dict d[], int len, int x)
@@ -227,7 +234,9 @@ int lookup(struct dict d[], int len, int x)
     for(int i = 0; i < len; ++i)
     {
         if (x == d[i].key)
+        {
             return i;
+        }
     }
 
     return -1;
@@ -250,16 +259,63 @@ static void print_ptr(ptr x)
         }
         else
         {
-            printf("#<unknown 0x%08x", x);
+            printf("#<unknown 0x%08x>", x);
         }
     }
 
     printf("\n");
 }
 
+static char* allocate_protected_space(int size)
+{
+    int page = getpagesize();
+    int status;
+    int aligned_size = ((size + page - 1) / page) * page;
+    char* p = mmap(0, aligned_size + 2 * page, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
+
+    if(p == MAP_FAILED)
+    {
+        printf("MAP FAILED - allocate_protected_space");
+    }
+
+    status = mprotect(p, page, PROT_NONE);
+
+    if(status != 0)
+    {
+        printf("mprotect failed - allocate_protected_space");
+    }
+
+    status = mprotect(p + page + aligned_size, page, PROT_NONE);
+
+    if(status != 0) {
+        printf("mprotect failed");
+    }
+
+    return (p + page);
+}
+
+static void deallocate_protected_space(char* p, int size)
+{
+    int page = getpagesize();
+    int status;
+    int aligned_size = ((size + page -1) / page) * page;
+
+    status = munmap(p - page, aligned_size + 2 * page);
+
+    if(status != 0)
+    {
+        printf("munmap failed deallocated_protected_space");
+    }
+}
+
 int main(int argc, char** argv)
 {
-    print_ptr(scheme_entry());
+    int stack_size = (16 * 4096); /* holds 16k cells */
+    char* stack_top = allocate_protected_space(stack_size);
+    char* stack_base = stack_top + stack_size;
+
+    print_ptr(scheme_entry(stack_base)); // replace 0 with stack_base
+    deallocate_protected_space(stack_top, stack_size);
 
     return 0;
 }

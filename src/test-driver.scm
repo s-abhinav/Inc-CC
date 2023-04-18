@@ -28,7 +28,7 @@
     (close-output-port p)))
 
 (define (build)
-  (unless (zero? (system "gcc -o ./bin/stst src/startup.c ./bin/stst.s"))
+  (unless (zero? (system "gcc -g -o ./bin/stst src/startup.c ./bin/stst.s"))
     (error 'make "Could not build target.")))
 
 (define (execute)
